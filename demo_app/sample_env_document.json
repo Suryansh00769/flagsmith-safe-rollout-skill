@@ -1,0 +1,83 @@
+{
+  "api_key": "KGfust4wuefVktZYq57xTT",
+  "name": "Development",
+  "updated_at": "2026-11-26T02:30:00Z",
+  "project": {
+    "id": 56360,
+    "name": "safe_demo",
+    "segments": [
+      {
+        "id": 101,
+        "name": "pro_plan_users",
+        "rules": [
+          {
+            "type": "ALL",
+            "conditions": [
+              {
+                "property_": "plan",
+                "operator": "EQUAL",
+                "value": "pro"
+              }
+            ],
+            "rules": []
+          }
+        ],
+        "feature_states": [
+          {
+            "featurestate_uuid": "11111111-1111-4111-8111-111111111111",
+            "feature": {
+              "id": 1,
+              "name": "checkout_v2_pricing",
+              "type": "MULTIVARIATE"
+            },
+            "enabled": true,
+            "feature_state_value": "v2",
+            "feature_segment": {
+              "priority": 0
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "feature_states": [
+    {
+      "featurestate_uuid": "22222222-2222-4222-8222-222222222222",
+      "feature": {
+        "id": 1,
+        "name": "checkout_v2_pricing",
+        "type": "MULTIVARIATE"
+      },
+      "enabled": true,
+      "feature_state_value": "control",
+      "multivariate_feature_state_values": [
+        {
+          "id": 10,
+          "multivariate_feature_option": {
+            "id": 100,
+            "value": "control"
+          },
+          "percentage_allocation": 90.0
+        },
+        {
+          "id": 11,
+          "multivariate_feature_option": {
+            "id": 101,
+            "value": "v2"
+          },
+          "percentage_allocation": 10.0
+        }
+      ]
+    },
+    {
+      "featurestate_uuid": "33333333-3333-4333-8333-333333333333",
+      "feature": {
+        "id": 2,
+        "name": "legacy_promo_banner",
+        "type": "STANDARD"
+      },
+      "enabled": true,
+      "feature_state_value": "Holiday2026"
+    }
+  ]
+}
