@@ -34,6 +34,43 @@ def parse_variants(spec: str | None) -> list[dict[str, Any]]:
     return variants
 
 
+def _resolve_variant_weights(
+    project_root: Path,
+    feature: str,
+    variants: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Map requested variant keys/values to Flagsmith variant key or numeric id."""
+    if not variants:
+        return []
+    listed, res = run_flagsmith_json(
+        ["feature", "variant", "list", feature],
+        jq_expr="[.[] | {id: .id, key: .key, value: .value}]",
+        cwd=project_root,
+    )
+    if not res.ok or not isinstance(listed, list):
+        return variants
+
+    lookup: dict[str, str] = {}
+    for item in listed:
+        if not isinstance(item, dict):
+            continue
+        ident = item.get("key") or item.get("id")
+        if ident is None:
+            continue
+        ident_str = str(ident)
+        if item.get("key"):
+            lookup[str(item["key"])] = ident_str
+        if item.get("value") is not None:
+            lookup[str(item["value"])] = ident_str
+        if item.get("id") is not None:
+            lookup[str(item["id"])] = ident_str
+
+    return [
+        {**variant, "selector": lookup.get(str(variant["value"]), str(variant["value"]))}
+        for variant in variants
+    ]
+
+
 def build_rollout_commands(
     *,
     feature: str,
@@ -53,7 +90,8 @@ def build_rollout_commands(
     if not feature_exists:
         create_cmd = ["feature", "create", feature, "--description", description]
         if variants:
-            create_cmd.extend(["--variants", json.dumps(variants, separators=(",", ":"))])
+            payload = [{"value": v["value"], "weight": v["weight"]} for v in variants]
+            create_cmd.extend(["--variants", json.dumps(payload, separators=(",", ":"))])
         elif enable:
             create_cmd.append("--enabled")
         commands.append(create_cmd)
@@ -63,8 +101,11 @@ def build_rollout_commands(
         update_cmd.append("--enable" if enable else "--disable")
         if segment:
             update_cmd.extend(["--segment", segment])
-        for variant in variants:
-            update_cmd.extend(["--weight", f"{variant['value']}={variant['weight']}"])
+        if (feature_exists or segment) and variants:
+            for variant in variants:
+                selector = variant.get("selector", variant["value"])
+                update_cmd.extend(["--weight", f"{selector}={variant['weight']}"])
+        update_cmd.append("--yes")
         commands.append(update_cmd)
 
     if eval_identity:
@@ -122,6 +163,9 @@ def execute_rollout(
         if feat_res.ok and isinstance(existing, list):
             feature_exists = feature in existing
 
+        if feature_exists and variants:
+            variants = _resolve_variant_weights(project_root, feature, variants)
+
     commands, rollback_cmd = build_rollout_commands(
         feature=feature,
         description=description,
@@ -136,6 +180,19 @@ def execute_rollout(
     executed: list[dict[str, Any]] = []
     if apply:
         for cmd in commands:
+            if not feature_exists and segment and variants and cmd[:2] == ["flag", "update"]:
+                resolved_variants = _resolve_variant_weights(project_root, feature, variants)
+                rebuilt, _ = build_rollout_commands(
+                    feature=feature,
+                    description=description,
+                    variants=resolved_variants,
+                    segment=segment,
+                    enable=enable,
+                    eval_identity=None,
+                    eval_traits=[],
+                    feature_exists=True,
+                )
+                cmd = rebuilt[0]
             res = run_flagsmith(cmd, cwd=project_root)
             executed.append({"command": format_command(cmd), "ok": res.ok, "returncode": res.returncode, "stderr": res.stderr})
             if not res.ok:

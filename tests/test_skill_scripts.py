@@ -211,3 +211,51 @@ def test_archive_feature_apply_executes_cli(monkeypatch: pytest.MonkeyPatch) -> 
     assert code == 0
     assert res["mode"] == "apply"
     assert res["archived"] is True
+
+
+def test_rollout_guard_resolves_existing_variant_ids_when_applying(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_json(args, **_kwargs):
+        if args[:2] == ["environment", "document"]:
+            return {"name": "Development"}, CliResult(ok=True, returncode=0, stdout="{}", stderr="", command=["flagsmith", *args])
+        if args[:2] == ["feature", "list"]:
+            return ["checkout_v2_pricing"], CliResult(ok=True, returncode=0, stdout="[]", stderr="", command=["flagsmith", *args])
+        if args[:3] == ["feature", "variant", "list"]:
+            return [
+                {"id": 9101, "key": None, "value": "control"},
+                {"id": 9102, "key": None, "value": "v2"},
+            ], CliResult(ok=True, returncode=0, stdout="[]", stderr="", command=["flagsmith", *args])
+        return [], CliResult(ok=True, returncode=0, stdout="[]", stderr="", command=["flagsmith", *args])
+
+    executed_cmds: list[list[str]] = []
+    monkeypatch.setattr(rollout_guard, "run_flagsmith_json", fake_json)
+    monkeypatch.setattr(
+        rollout_guard,
+        "run_flagsmith",
+        lambda cmd, **_kwargs: (
+            executed_cmds.append(cmd)
+            or CliResult(ok=True, returncode=0, stdout="", stderr="", command=["flagsmith", *cmd])
+        ),
+    )
+
+    res, code = execute_rollout(
+        ROOT,
+        feature="checkout_v2_pricing",
+        description="Re-weight existing feature",
+        variants_spec="control=50,v2=50",
+        eval_identity="pro-user-1",
+        apply=True,
+    )
+    assert code == 0
+    assert res["applied"] is True
+    assert executed_cmds[0] == [
+        "flag",
+        "update",
+        "checkout_v2_pricing",
+        "--enable",
+        "--weight",
+        "9101=50",
+        "--weight",
+        "9102=50",
+        "--yes",
+    ]
+    assert executed_cmds[1] == ["evaluate", "checkout_v2_pricing", "--identity", "pro-user-1", "--test"]
