@@ -81,9 +81,9 @@ $env:FLAGSMITH_API_KEY = "<your-master-api-key>"
    Verifies `flagsmith.json`, CLI v2+, auth source, and production guardrails.
 2. **Phase 2 — Audit Codebase & Risky Diffs (35s):**
    ```powershell
-   .venv\Scripts\python.exe .agents\skills\flagsmith-safe-rollout\scripts\scan_flags.py --offline-flags demo_app\sample_env_document.json
+   .venv\Scripts\python.exe .agents\skills\flagsmith-safe-rollout\scripts\scan_flags.py --diff-file demo_app\sample_risky_pr.patch --offline-flags demo_app\sample_env_document.json
    ```
-   Cross-references Python AST call sites and `git diff` against Flagsmith flags using `--jq`.
+   Cross-references Python AST call sites and the sample PR patch (`calculate_express_shipping`) against Flagsmith flags using `--jq`.
 3. **Phase 3 — Guarded Progressive Rollout + Rollback (45s):**
    ```powershell
    .venv\Scripts\python.exe .agents\skills\flagsmith-safe-rollout\scripts\rollout_guard.py --feature checkout_v2_pricing --variants control=90,v2=10 --eval-identity user-1

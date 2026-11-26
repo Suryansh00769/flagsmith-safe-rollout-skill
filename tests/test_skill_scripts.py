@@ -14,13 +14,18 @@ sys.path.insert(0, str(SKILL_SCRIPTS))
 sys.path.insert(0, str(ROOT))
 
 from benchmark_tokens import run_benchmark  # noqa: E402
+import cleanup_stale  # noqa: E402
 from cleanup_stale import analyze_stale_flags, archive_feature  # noqa: E402
+from install_skill import install as install_skill_mirrors  # noqa: E402
 from preflight import run_preflight  # noqa: E402
+import rollout_guard  # noqa: E402
 from rollout_guard import build_rollout_commands, execute_rollout, parse_variants  # noqa: E402
 from scan_flags import run_scan  # noqa: E402
+from _cli import CliResult  # noqa: E402
 
 
 SAMPLE_DOC = ROOT / "demo_app" / "sample_env_document.json"
+SAMPLE_PATCH = ROOT / "demo_app" / "sample_risky_pr.patch"
 
 
 def test_preflight_offline_doc_detects_dev_and_features() -> None:
@@ -132,3 +137,77 @@ def test_token_benchmark_achieves_substantial_savings() -> None:
     bench = run_benchmark(ROOT, flag_count=25)
     assert bench["jq_reduction_pct"] >= 80.0
     assert bench["skill_scan_reduction_pct"] >= 80.0
+
+
+def test_sample_risky_pr_patch_triggers_flag_suggestion() -> None:
+    res = run_scan(ROOT, diff_file=SAMPLE_PATCH, offline_flags=SAMPLE_DOC)
+    assert res["missing_fallback_in_code"] == []
+    assert any(item["suggested_flag"] == "enable_calculate_express_shipping" for item in res["unflagged_diff_symbols"])
+
+
+def test_rollout_guard_blocks_production_without_confirm_prod(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        rollout_guard,
+        "run_flagsmith_json",
+        lambda args, **_kwargs: (
+            {"name": "Production"} if args[:2] == ["environment", "document"] else [],
+            CliResult(ok=True, returncode=0, stdout="{}", stderr="", command=["flagsmith", *args]),
+        ),
+    )
+
+    blocked, code = execute_rollout(
+        ROOT,
+        feature="checkout_v2_pricing",
+        description="Prod rollout",
+        apply=True,
+        confirm_prod=False,
+    )
+    assert code == 2
+    assert blocked["applied"] is False
+    assert "confirm-prod" in blocked["blocked"]
+
+    executed_cmds: list[list[str]] = []
+    monkeypatch.setattr(
+        rollout_guard,
+        "run_flagsmith",
+        lambda cmd, **_kwargs: (
+            executed_cmds.append(cmd)
+            or CliResult(ok=True, returncode=0, stdout="", stderr="", command=["flagsmith", *cmd])
+        ),
+    )
+    applied, ok_code = execute_rollout(
+        ROOT,
+        feature="checkout_v2_pricing",
+        description="Prod rollout",
+        variants_spec="control=90,v2=10",
+        eval_identity="prod-smoke",
+        apply=True,
+        confirm_prod=True,
+    )
+    assert ok_code == 0
+    assert applied["applied"] is True
+    assert len(executed_cmds) == 3
+
+
+def test_install_skill_mirrors_canonical_bundle(tmp_path: Path) -> None:
+    source = tmp_path / ".agents" / "skills" / "flagsmith-safe-rollout"
+    (source / "scripts").mkdir(parents=True)
+    (source / "SKILL.md").write_text("# Skill", encoding="utf-8")
+    (source / "scripts" / "preflight.py").write_text("print('ok')", encoding="utf-8")
+
+    installed = install_skill_mirrors(tmp_path, ["claude", "cursor"])
+    assert len(installed) == 2
+    assert (tmp_path / ".claude" / "skills" / "flagsmith-safe-rollout" / "SKILL.md").is_file()
+    assert (tmp_path / ".cursor" / "skills" / "flagsmith-safe-rollout" / "scripts" / "preflight.py").is_file()
+
+
+def test_archive_feature_apply_executes_cli(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        cleanup_stale,
+        "run_flagsmith",
+        lambda cmd, **_kwargs: CliResult(ok=True, returncode=0, stdout="", stderr="", command=["flagsmith", *cmd]),
+    )
+    res, code = archive_feature(ROOT, "legacy_promo_banner", apply=True)
+    assert code == 0
+    assert res["mode"] == "apply"
+    assert res["archived"] is True

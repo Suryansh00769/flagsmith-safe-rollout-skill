@@ -87,7 +87,7 @@ def analyze_stale_flags(
                     "reason": "fully_enabled_single_variant",
                     "code_sites": sites,
                     "action": "verify_100pct_rollout_then_inline_and_archive",
-                    "archive_command": f"flagsmith feature update {name} --archive --yes --no-input",
+                    "archive_command": format_command(["feature", "update", name, "--archive", "--yes", "--no-input"]),
                 }
             )
         elif not sites and name not in archived_names:
@@ -97,7 +97,7 @@ def analyze_stale_flags(
                     "reason": "unused_in_code",
                     "code_sites": [],
                     "action": "archive_feature_if_retired",
-                    "archive_command": f"flagsmith feature update {name} --archive --yes --no-input",
+                    "archive_command": format_command(["feature", "update", name, "--archive", "--yes", "--no-input"]),
                 }
             )
 

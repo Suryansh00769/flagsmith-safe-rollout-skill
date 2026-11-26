@@ -46,15 +46,23 @@ flagsmith feature update pricing_v2 --archive --yes --no-input
 
 ## Python SDK Offline / Fallback Pattern
 
+Note: `flagsmith` SDK does not allow passing `default_flag_handler` and `offline_handler` to the same `Flagsmith(...)` instance—use one mode per client instance and wrap calls in a safe fallback boundary (see `demo_app/flag_client.py`):
+
 ```python
 from flagsmith import Flagsmith
 from flagsmith.models import DefaultFlag
 from flagsmith.offline_handlers import LocalFileHandler
 
-client = Flagsmith(
+# Live mode with explicit timeout and default fallback
+live_client = Flagsmith(
     environment_key=env_key,
     request_timeout_seconds=3,
     default_flag_handler=lambda name: DefaultFlag(enabled=False, value=None),
-    offline_handler=LocalFileHandler("env.json"),  # optional local recovery
+)
+
+# Offline recovery mode from `flagsmith environment document`
+offline_client = Flagsmith(
+    offline_mode=True,
+    offline_handler=LocalFileHandler("env.json"),
 )
 ```

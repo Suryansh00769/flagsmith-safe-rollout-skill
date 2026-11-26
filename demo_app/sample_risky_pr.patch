@@ -1,0 +1,11 @@
+diff --git a/demo_app/shipping.py b/demo_app/shipping.py
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/demo_app/shipping.py
+@@ -0,0 +1,6 @@
++def calculate_express_shipping(weight_kg: float, rush: bool = False) -> float:
++    base = 9.99 + (weight_kg * 2.5)
++    if rush:
++        return round(base * 1.5, 2)
++    return round(base, 2)
